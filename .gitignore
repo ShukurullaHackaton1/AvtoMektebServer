@@ -1,0 +1,9 @@
+/node_modules
+.env
+/kiril-test-images
+/uz-test-images
+/ru-test-images
+package-lock.json
+template_kiril.json
+template_uz.json
+template_ru.json
