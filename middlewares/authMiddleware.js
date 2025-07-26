@@ -1,15 +1,27 @@
 import jwt from "jsonwebtoken";
 
-const authMiddleware = (req, res, next) => {
+const auth = async (req, res, next) => {
   try {
-    const token = req.headers.Authorization.split(" ")[1];
+    const token = req.header("Authorization")?.replace("Bearer ", "");
 
-    const decode = jwt.decode(token, process.env.JWT_SECRET);
-    res.userData = decode;
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Token topilmadi, ruxsat berilmadi",
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.userData = decoded;
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Autentifikatsiya amalga oshmadi" });
+    console.error("Auth middleware error:", error);
+    res.status(401).json({
+      success: false,
+      message: "Token yaroqsiz",
+    });
   }
 };
 
-export default authMiddleware;
+export default auth;

@@ -7,3 +7,16 @@ package-lock.json
 template_kiril_uz.json
 template_uz.json
 template_ru.json
+kiril.json
+/edu_type_img
+/files/content/images
+/files
+
+kiril-test-images.zip
+ru-test-images.zip
+/routes/edu-types.routes.js
+/models/contents.model.js
+/models/edu-types.model.js
+/models/lessons.model.js
+/models/topics.model.js
+/models/topics.model.js

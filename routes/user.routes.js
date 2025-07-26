@@ -13,21 +13,14 @@ router.post("/sign", async (req, res) => {
     if (!firstname || !lastname || !phone || !password || !confirmpassword) {
       return res.status(400).json({
         status: "error",
-        message: "Iltimos barcha maydonlarn toliq kiriting",
+        message: "Iltimos barcha maydonlarni to'liq kiriting",
       });
     }
 
     if (password !== confirmpassword) {
       return res.status(400).json({
         status: "error",
-        message: "tasdiqlash passwordi asl password bilan mos kelmadi",
-      });
-    }
-
-    if (phone.length !== 8) {
-      return res.status(400).json({
-        status: "error",
-        message: "Telefon raqamining formatini to'g'ri kiriting",
+        message: "Tasdiqlash passwordi asl password bilan mos kelmadi",
       });
     }
 
@@ -35,26 +28,39 @@ router.post("/sign", async (req, res) => {
     if (findUser) {
       return res.status(400).json({
         status: "error",
-        message: "Bunday foydalanuvchi oldin ro'yhatdan o'tgan",
+        message: "Bunday foydalanuvchi oldin ro'yxatdan o'tgan",
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const createUser = await userModel.create({
-      ...req.body,
+      firstname,
+      lastname,
+      phone,
       password: hashedPassword,
     });
 
     const getToken = token(createUser._id);
 
-    res
-      .status(200)
-      .json({ status: "success", data: createUser, token: getToken });
+    res.status(200).json({
+      status: "success",
+      data: {
+        id: createUser._id,
+        firstname: createUser.firstname,
+        lastname: createUser.lastname,
+        phone: createUser.phone,
+        totalTests: createUser.totalTests,
+        totalCorrect: createUser.totalCorrect,
+        totalWrong: createUser.totalWrong,
+      },
+      token: getToken,
+    });
   } catch (error) {
     res.status(500).json({ status: "error", message: error.message });
   }
 });
+
 router.post("/login", async (req, res) => {
   try {
     const { phone, password } = req.body;
@@ -62,11 +68,11 @@ router.post("/login", async (req, res) => {
     if (!phone || !password) {
       return res.status(400).json({
         status: "error",
-        message: "Iltimos barcha maydonlarn toliq kiriting",
+        message: "Iltimos barcha maydonlarni to'liq kiriting",
       });
     }
 
-    if (phone.length !== 8) {
+    if (phone.length !== 9) {
       return res.status(400).json({
         status: "error",
         message: "Telefon raqamining formatini to'g'ri kiriting",
@@ -77,7 +83,7 @@ router.post("/login", async (req, res) => {
     if (!findUser) {
       return res.status(400).json({
         status: "error",
-        message: "Bunday foydalanuvchi oldin ro'yhatdan o'tmagan",
+        message: "Bunday foydalanuvchi oldin ro'yxatdan o'tmagan",
       });
     }
 
@@ -91,9 +97,19 @@ router.post("/login", async (req, res) => {
 
     const getToken = token(findUser._id);
 
-    res
-      .status(200)
-      .json({ status: "success", data: findUser, token: getToken });
+    res.status(200).json({
+      status: "success",
+      data: {
+        id: findUser._id,
+        firstname: findUser.firstname,
+        lastname: findUser.lastname,
+        phone: findUser.phone,
+        totalTests: findUser.totalTests,
+        totalCorrect: findUser.totalCorrect,
+        totalWrong: findUser.totalWrong,
+      },
+      token: getToken,
+    });
   } catch (error) {
     res.status(500).json({ status: "error", message: error.message });
   }
@@ -102,7 +118,7 @@ router.post("/login", async (req, res) => {
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
     const { userId } = req.userData;
-    const findUser = await userModel.findById(userId);
+    const findUser = await userModel.findById(userId).select("-password");
 
     if (!findUser) {
       return res
@@ -111,6 +127,39 @@ router.get("/profile", authMiddleware, async (req, res) => {
     }
 
     res.status(200).json({ status: "success", data: findUser });
+  } catch (error) {
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// Statistikani olish
+router.get("/stats", authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.userData;
+    const user = await userModel
+      .findById(userId)
+      .select("totalTests totalCorrect totalWrong");
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Foydalanuvchi topilmadi" });
+    }
+
+    const successRate =
+      user.totalTests > 0
+        ? Math.round((user.totalCorrect / user.totalTests) * 100)
+        : 0;
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        totalTests: user.totalTests,
+        totalCorrect: user.totalCorrect,
+        totalWrong: user.totalWrong,
+        successRate: successRate,
+      },
+    });
   } catch (error) {
     res.status(500).json({ status: "error", message: error.message });
   }

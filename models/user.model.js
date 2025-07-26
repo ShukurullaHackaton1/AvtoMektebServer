@@ -18,20 +18,17 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    plan: {
-      type: {
-        type: String,
-        enum: ["starter", "pro"],
-      },
-      startTime: {
-        type: String,
-      },
-      endTime: {
-        type: String,
-      },
-      usageRate: {
-        type: Number,
-      },
+    totalTests: {
+      type: Number,
+      default: 0,
+    },
+    totalCorrect: {
+      type: Number,
+      default: 0,
+    },
+    totalWrong: {
+      type: Number,
+      default: 0,
     },
   },
   {
