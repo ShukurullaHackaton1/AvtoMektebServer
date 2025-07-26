@@ -11,13 +11,18 @@ router.get("/lists/:lang", async (req, res) => {
   try {
     const { lang } = req.params;
 
-    if (!["uz", "ru", "kiril"].includes(lang)) {
+    if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
       return res
         .status(400)
         .json({ status: "error", message: "Bunday turdagi malumot topilmadi" });
     }
 
-    const findTemplates = await templatesModel.find({ templateLang: lang });
+    // uz_kiril ni kiril ga o'zgartiramiz
+    const searchLang = lang === "uz_kiril" ? "kiril" : lang;
+
+    const findTemplates = await templatesModel.find({
+      templateLang: searchLang,
+    });
 
     const selectedTemplateDetails = findTemplates.map((item) => {
       return {
@@ -33,9 +38,9 @@ router.get("/lists/:lang", async (req, res) => {
     res.status(200).json({
       status: "success",
       data: selectedTemplateDetails,
-      originalTemplates: findTemplates,
     });
   } catch (error) {
+    console.error("Templates list error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
@@ -45,8 +50,17 @@ router.get("/template/:lang/:templateId", async (req, res) => {
   try {
     const { lang, templateId } = req.params;
 
+    if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Bunday turdagi malumot topilmadi" });
+    }
+
+    // uz_kiril ni kiril ga o'zgartiramiz
+    const searchLang = lang === "uz_kiril" ? "kiril" : lang;
+
     const findTemplate = await templatesModel.findOne({
-      templateLang: lang,
+      templateLang: searchLang,
       "template.exam_center_test_template.id": Number(templateId),
     });
 
@@ -58,6 +72,7 @@ router.get("/template/:lang/:templateId", async (req, res) => {
 
     res.status(200).json({ status: "success", data: findTemplate });
   } catch (error) {
+    console.error("Template olishda xatolik:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
@@ -68,11 +83,13 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
     const { templateLang, templateId, questionId, selectedAnswer } = req.body;
     const { userId } = req.userData;
 
+    // uz_kiril ni kiril ga o'zgartiramiz
+    const searchLang = templateLang === "uz_kiril" ? "kiril" : templateLang;
+
     const findTemplate = await templatesModel.findOne({
-      templateLang,
+      templateLang: searchLang,
       "template.exam_center_test_template.id": Number(templateId),
     });
-    console.log(findTemplate);
 
     if (!findTemplate) {
       return res
@@ -91,6 +108,9 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
     }
 
     const correctAnswer = question.answers.find((ans) => ans.check === 1);
+    const selectedAnswerObj = question.answers.find(
+      (ans) => ans.id === Number(selectedAnswer)
+    );
     const isCorrect = correctAnswer.id === Number(selectedAnswer);
 
     // Statistikani yangilash
@@ -105,7 +125,7 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
     if (!isCorrect) {
       await historiesModel.create({
         userId,
-        templateLang,
+        templateLang: searchLang,
         templateId: Number(templateId),
         answerId: Number(questionId),
         selectVariant: Number(selectedAnswer),
@@ -116,11 +136,19 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
       status: "success",
       data: {
         isCorrect,
-        correctAnswer: correctAnswer,
+        correctAnswer: {
+          id: correctAnswer.id,
+          text: correctAnswer.body.map((b) => b.value).join(" "),
+        },
+        selectedAnswer: {
+          id: selectedAnswerObj.id,
+          text: selectedAnswerObj.body.map((b) => b.value).join(" "),
+        },
         explanation: question.explanation || null,
       },
     });
   } catch (error) {
+    console.error("Check answer error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
@@ -139,7 +167,7 @@ router.get("/mistakes", authMiddleware, async (req, res) => {
     for (const mistake of mistakes) {
       const template = await templatesModel.findOne({
         templateLang: mistake.templateLang,
-        "template.id": mistake.templateId,
+        "template.exam_center_test_template.id": mistake.templateId,
       });
 
       if (template) {
@@ -160,8 +188,14 @@ router.get("/mistakes", authMiddleware, async (req, res) => {
             templateTitle:
               template.template.title || `Shablon ${mistake.templateId}`,
             question: question,
-            userAnswer: userAnswer,
-            correctAnswer: correctAnswer,
+            userAnswer: {
+              id: userAnswer.id,
+              text: userAnswer.body.map((b) => b.value).join(" "),
+            },
+            correctAnswer: {
+              id: correctAnswer.id,
+              text: correctAnswer.body.map((b) => b.value).join(" "),
+            },
             date: mistake.createdAt,
           });
         }
@@ -170,6 +204,7 @@ router.get("/mistakes", authMiddleware, async (req, res) => {
 
     res.status(200).json({ status: "success", data: mistakeDetails });
   } catch (error) {
+    console.error("Mistakes error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
