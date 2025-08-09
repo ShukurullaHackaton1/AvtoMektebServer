@@ -3,6 +3,10 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 import templatesModel from "../models/templates.model.js";
 import userModel from "../models/user.model.js";
 import historiesModel from "../models/histories.model.js";
+import {
+  checkTestLimit,
+  updateTestCount,
+} from "../middlewares/planMiddleware.js";
 
 const router = express.Router();
 
@@ -49,39 +53,60 @@ router.get("/lists/:lang", async (req, res) => {
   }
 });
 
-// Bitta template ni olish
-router.get("/template/:lang/:templateId", async (req, res) => {
-  try {
-    const { lang, templateId } = req.params;
+// Bitta template ni olish - TEST LIMIT TEKSHIRISH
+router.get(
+  "/template/:lang/:templateId",
+  authMiddleware,
+  checkTestLimit,
+  async (req, res) => {
+    try {
+      const { lang, templateId } = req.params;
 
-    if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "Bunday turdagi malumot topilmadi" });
+      if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
+        return res
+          .status(400)
+          .json({
+            status: "error",
+            message: "Bunday turdagi malumot topilmadi",
+          });
+      }
+
+      // uz_kiril ni kiril ga o'zgartiramiz
+      const searchLang = lang === "uz_kiril" ? "kiril" : lang;
+
+      const findTemplate = await templatesModel.findOne({
+        templateLang: searchLang,
+        "template.exam_center_test_template.id": Number(templateId),
+      });
+
+      if (!findTemplate) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "Shablon topilmadi" });
+      }
+
+      // Foydalanuvchi plan ma'lumotlarini qo'shish
+      const user = req.user;
+      const limitInfo = user.canTakeTest();
+
+      res.status(200).json({
+        status: "success",
+        data: findTemplate,
+        userPlan: {
+          plan: user.plan,
+          dailyUsed: user.dailyTestsUsed,
+          remaining: limitInfo.remaining,
+          limit: limitInfo.limit || "unlimited",
+        },
+      });
+    } catch (error) {
+      console.error("Template olishda xatolik:", error);
+      res.status(500).json({ status: "error", message: error.message });
     }
-
-    // uz_kiril ni kiril ga o'zgartiramiz
-    const searchLang = lang === "uz_kiril" ? "kiril" : lang;
-
-    const findTemplate = await templatesModel.findOne({
-      templateLang: searchLang,
-      "template.exam_center_test_template.id": Number(templateId),
-    });
-
-    if (!findTemplate) {
-      return res
-        .status(404)
-        .json({ status: "error", message: "Shablon topilmadi" });
-    }
-
-    res.status(200).json({ status: "success", data: findTemplate });
-  } catch (error) {
-    console.error("Template olishda xatolik:", error);
-    res.status(500).json({ status: "error", message: error.message });
   }
-});
+);
 
-// Javobni tekshirish
+// Javobni tekshirish - FREE PLAN UCHUN 3 XATO CHEGARASI OLIB TASHLANDI
 router.post("/check-answer", authMiddleware, async (req, res) => {
   try {
     const { templateLang, templateId, questionId, selectedAnswer } = req.body;
@@ -117,13 +142,8 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
     );
     const isCorrect = correctAnswer.id === Number(selectedAnswer);
 
-    // Statistikani yangilash
-    await userModel.findByIdAndUpdate(userId, {
-      $inc: {
-        totalTests: 1,
-        ...(isCorrect ? { totalCorrect: 1 } : { totalWrong: 1 }),
-      },
-    });
+    // Test count va statistikani yangilash
+    await updateTestCount(userId, isCorrect);
 
     // Noto'g'ri javob bo'lsa tarixga saqlash
     if (!isCorrect) {
@@ -153,6 +173,39 @@ router.post("/check-answer", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Check answer error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// User plan ma'lumotlarini olish
+router.get("/user-plan", authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.userData;
+    const user = await userModel
+      .findById(userId)
+      .select("plan dailyTestsUsed lastTestDate planExpiryDate");
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Foydalanuvchi topilmadi" });
+    }
+
+    const limitInfo = user.canTakeTest();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        plan: user.plan,
+        dailyUsed: user.dailyTestsUsed,
+        remaining: limitInfo.remaining,
+        limit: limitInfo.limit || "unlimited",
+        canTakeTest: limitInfo.canTake,
+        planExpiryDate: user.planExpiryDate,
+      },
+    });
+  } catch (error) {
+    console.error("User plan error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
@@ -189,7 +242,7 @@ router.get("/mistakes", authMiddleware, async (req, res) => {
       }
     }
 
-    // 4. Barcha kerakli template’larni bitta query bilan olish
+    // 4. Barcha kerakli template'larni bitta query bilan olish
     const templates = await templatesModel
       .find({ $or: uniqueConditions })
       .select("templateLang template")

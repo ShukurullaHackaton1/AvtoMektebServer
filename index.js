@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import cors from "cors";
 import userRoutes from "./routes/user.routes.js";
 import templateRoutes from "./routes/template.routes.js";
+import paymentRoutes from "./routes/payment.routes.js"; // Yangi payment routes
+import adminRoutes from "./routes/admin.routes.js"; // Yangi admin routes
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -23,12 +25,14 @@ app.use(express.json());
 
 // Health check endpoint
 app.get("/", (req, res) => {
-  res.json({ message: "Server is running!", status: "OK" });
+  res.json({ message: "AvtoTest Server is running!", status: "OK" });
 });
 
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/templates", templateRoutes);
+app.use("/api/payments", paymentRoutes); // Payment routes
+app.use("/api/admin", adminRoutes); // Admin routes
 
 // Static files
 app.use(

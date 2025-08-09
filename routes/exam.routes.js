@@ -1,0 +1,391 @@
+import express from "express";
+import authMiddleware from "../middlewares/authMiddleware.js";
+import { checkProPlan } from "../middlewares/planMiddleware.js";
+import templatesModel from "../models/templates.model.js";
+import userModel from "../models/user.model.js";
+
+const router = express.Router();
+
+// Exam sessiyalarini saqlash uchun (memory da)
+const examSessions = new Map();
+
+// Exam yaratish (20 yoki 50 ta test)
+router.post("/create-exam", authMiddleware, checkProPlan, async (req, res) => {
+  try {
+    const { language, questionCount } = req.body;
+    const { userId } = req.userData;
+
+    // Validation
+    if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(language)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Noto'g'ri til tanlandi",
+      });
+    }
+
+    if (![20, 50].includes(questionCount)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Test soni 20 yoki 50 bo'lishi kerak",
+      });
+    }
+
+    // uz_kiril ni kiril ga o'zgartirish
+    const searchLang = language === "uz_kiril" ? "kiril" : language;
+
+    // Shu tildagi barcha templatelarni olish
+    const templates = await templatesModel
+      .find({ templateLang: searchLang })
+      .select("template.questions")
+      .lean();
+
+    if (templates.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Ushbu tilda templatelar topilmadi",
+      });
+    }
+
+    // Barcha savollarni bir joyga yig'ish
+    let allQuestions = [];
+    templates.forEach((template, templateIndex) => {
+      if (template.template?.questions) {
+        template.template.questions.forEach((question) => {
+          allQuestions.push({
+            ...question,
+            templateIndex,
+            originalTemplateId: template._id,
+          });
+        });
+      }
+    });
+
+    // Yetarli savol borligini tekshirish
+    if (allQuestions.length < questionCount) {
+      return res.status(400).json({
+        status: "error",
+        message: `Ushbu tilda faqat ${allQuestions.length} ta savol mavjud`,
+      });
+    }
+
+    // Random savollarni tanlash
+    const shuffled = allQuestions.sort(() => 0.5 - Math.random());
+    const selectedQuestions = shuffled.slice(0, questionCount);
+
+    // Exam session yaratish
+    const examId = `exam_${userId}_${Date.now()}`;
+    const examSession = {
+      examId,
+      userId,
+      language: searchLang,
+      questionCount,
+      questions: selectedQuestions,
+      answers: {}, // questionId -> answerId
+      results: {}, // questionId -> boolean
+      startTime: new Date(),
+      endTime: null,
+      currentQuestion: 0,
+      status: "active", // active, completed, expired
+    };
+
+    examSessions.set(examId, examSession);
+
+    // Auto expire after 2 hours
+    setTimeout(() => {
+      const session = examSessions.get(examId);
+      if (session && session.status === "active") {
+        session.status = "expired";
+        session.endTime = new Date();
+      }
+    }, 2 * 60 * 60 * 1000); // 2 soat
+
+    res.json({
+      status: "success",
+      data: {
+        examId,
+        questionCount: selectedQuestions.length,
+        language: searchLang,
+        startTime: examSession.startTime,
+        currentQuestion: 0,
+        totalQuestions: selectedQuestions.length,
+      },
+    });
+  } catch (error) {
+    console.error("Create exam error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// Exam savol olish
+router.get(
+  "/question/:examId/:questionIndex",
+  authMiddleware,
+  checkProPlan,
+  async (req, res) => {
+    try {
+      const { examId, questionIndex } = req.params;
+      const { userId } = req.userData;
+
+      const session = examSessions.get(examId);
+
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({
+          status: "error",
+          message: "Exam topilmadi",
+        });
+      }
+
+      if (session.status !== "active") {
+        return res.status(400).json({
+          status: "error",
+          message: "Exam tugagan yoki muddati o'tgan",
+        });
+      }
+
+      const qIndex = parseInt(questionIndex);
+      if (qIndex < 0 || qIndex >= session.questions.length) {
+        return res.status(400).json({
+          status: "error",
+          message: "Noto'g'ri savol raqami",
+        });
+      }
+
+      const question = session.questions[qIndex];
+      const userAnswer = session.answers[question.id];
+      const isAnswered = session.results.hasOwnProperty(question.id);
+
+      res.json({
+        status: "success",
+        data: {
+          question: {
+            id: question.id,
+            body: question.body,
+            answers: question.answers,
+          },
+          questionIndex: qIndex,
+          totalQuestions: session.questions.length,
+          userAnswer,
+          isAnswered,
+          examInfo: {
+            examId,
+            language: session.language,
+            questionCount: session.questionCount,
+            startTime: session.startTime,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Get exam question error:", error);
+      res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+);
+
+// Exam javob berish
+router.post(
+  "/answer/:examId",
+  authMiddleware,
+  checkProPlan,
+  async (req, res) => {
+    try {
+      const { examId } = req.params;
+      const { questionId, selectedAnswer } = req.body;
+      const { userId } = req.userData;
+
+      const session = examSessions.get(examId);
+
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({
+          status: "error",
+          message: "Exam topilmadi",
+        });
+      }
+
+      if (session.status !== "active") {
+        return res.status(400).json({
+          status: "error",
+          message: "Exam tugagan yoki muddati o'tgan",
+        });
+      }
+
+      // Agar allaqachon javob berilgan bo'lsa
+      if (session.results.hasOwnProperty(questionId)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Bu savolga allaqachon javob berilgan",
+        });
+      }
+
+      // Savolni topish
+      const question = session.questions.find(
+        (q) => q.id === parseInt(questionId)
+      );
+      if (!question) {
+        return res.status(400).json({
+          status: "error",
+          message: "Savol topilmadi",
+        });
+      }
+
+      // To'g'ri javobni topish
+      const correctAnswer = question.answers.find((ans) => ans.check === 1);
+      const selectedAnswerObj = question.answers.find(
+        (ans) => ans.id === parseInt(selectedAnswer)
+      );
+      const isCorrect = correctAnswer.id === parseInt(selectedAnswer);
+
+      // Javobni saqlash
+      session.answers[questionId] = parseInt(selectedAnswer);
+      session.results[questionId] = isCorrect;
+
+      res.json({
+        status: "success",
+        data: {
+          isCorrect,
+          correctAnswer: {
+            id: correctAnswer.id,
+            text: correctAnswer.body.map((b) => b.value).join(" "),
+          },
+          selectedAnswer: {
+            id: selectedAnswerObj.id,
+            text: selectedAnswerObj.body.map((b) => b.value).join(" "),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Exam answer error:", error);
+      res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+);
+
+// Exam tugatish
+router.post(
+  "/complete/:examId",
+  authMiddleware,
+  checkProPlan,
+  async (req, res) => {
+    try {
+      const { examId } = req.params;
+      const { userId } = req.userData;
+
+      const session = examSessions.get(examId);
+
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({
+          status: "error",
+          message: "Exam topilmadi",
+        });
+      }
+
+      if (session.status !== "active") {
+        return res.status(400).json({
+          status: "error",
+          message: "Exam allaqachon tugagan",
+        });
+      }
+
+      // Exam ni tugatish
+      session.status = "completed";
+      session.endTime = new Date();
+
+      // Natijalarni hisoblash
+      const totalQuestions = session.questions.length;
+      const answeredQuestions = Object.keys(session.results).length;
+      const correctAnswers = Object.values(session.results).filter(
+        Boolean
+      ).length;
+      const wrongAnswers = answeredQuestions - correctAnswers;
+      const unansweredQuestions = totalQuestions - answeredQuestions;
+      const percentage =
+        totalQuestions > 0
+          ? Math.round((correctAnswers / totalQuestions) * 100)
+          : 0;
+
+      // User statistikasini yangilash
+      await userModel.findByIdAndUpdate(userId, {
+        $inc: {
+          totalTests: totalQuestions,
+          totalCorrect: correctAnswers,
+          totalWrong: wrongAnswers,
+        },
+      });
+
+      // Session ni 1 soatdan keyin o'chirish
+      setTimeout(() => {
+        examSessions.delete(examId);
+      }, 60 * 60 * 1000); // 1 soat
+
+      res.json({
+        status: "success",
+        data: {
+          examId,
+          results: {
+            totalQuestions,
+            answeredQuestions,
+            correctAnswers,
+            wrongAnswers,
+            unansweredQuestions,
+            percentage,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            duration: Math.round(
+              (session.endTime - session.startTime) / 1000 / 60
+            ), // minutes
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Complete exam error:", error);
+      res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+);
+
+// Exam status olish
+router.get(
+  "/status/:examId",
+  authMiddleware,
+  checkProPlan,
+  async (req, res) => {
+    try {
+      const { examId } = req.params;
+      const { userId } = req.userData;
+
+      const session = examSessions.get(examId);
+
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({
+          status: "error",
+          message: "Exam topilmadi",
+        });
+      }
+
+      const answeredCount = Object.keys(session.results).length;
+      const correctCount = Object.values(session.results).filter(
+        Boolean
+      ).length;
+
+      res.json({
+        status: "success",
+        data: {
+          examId,
+          examStatus: session.status,
+          language: session.language,
+          questionCount: session.questionCount,
+          totalQuestions: session.questions.length,
+          answeredQuestions: answeredCount,
+          correctAnswers: correctCount,
+          currentQuestion: session.currentQuestion,
+          startTime: session.startTime,
+          endTime: session.endTime,
+        },
+      });
+    } catch (error) {
+      console.error("Exam status error:", error);
+      res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+);
+
+export default router;
