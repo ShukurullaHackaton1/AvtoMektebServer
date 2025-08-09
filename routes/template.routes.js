@@ -11,6 +11,7 @@ router.get("/lists/:lang", async (req, res) => {
   try {
     const { lang } = req.params;
 
+    // Lang validatsiyasi
     if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
       return res
         .status(400)
@@ -20,20 +21,23 @@ router.get("/lists/:lang", async (req, res) => {
     // uz_kiril ni kiril ga o'zgartiramiz
     const searchLang = lang === "uz_kiril" ? "kiril" : lang;
 
-    const findTemplates = await templatesModel.find({
-      templateLang: searchLang,
-    });
+    // Faqat kerakli fieldlarni olish + lean() bilan tezlashtirish
+    const findTemplates = await templatesModel
+      .find({ templateLang: searchLang })
+      .select(
+        "templateLang template.exam_center_test_template.id template.title template.questions"
+      )
+      .lean();
 
-    const selectedTemplateDetails = findTemplates.map((item) => {
-      return {
-        id: item.template.exam_center_test_template.id,
-        title:
-          item.template.title ||
-          `Shablon ${item.template.exam_center_test_template.id}`,
-        questionCount: item.template.questions?.length || 0,
-        templateLang: item.templateLang,
-      };
-    });
+    // Kerakli ma'lumotlarni tayyorlash
+    const selectedTemplateDetails = findTemplates.map((item) => ({
+      id: item.template.exam_center_test_template.id,
+      title:
+        item.template.title ||
+        `Shablon ${item.template.exam_center_test_template.id}`,
+      questionCount: item.template.questions?.length || 0,
+      templateLang: item.templateLang,
+    }));
 
     res.status(200).json({
       status: "success",
@@ -158,48 +162,86 @@ router.get("/mistakes", authMiddleware, async (req, res) => {
   try {
     const { userId } = req.userData;
 
+    // 1. Mistakelarni olamiz
     const mistakes = await historiesModel
       .find({ userId })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
+    if (!mistakes.length) {
+      return res.status(200).json({ status: "success", data: [] });
+    }
+
+    // 2. Barcha kerakli templateLang va templateId larni yig'amiz
+    const templateConditions = mistakes.map((m) => ({
+      templateLang: m.templateLang,
+      "template.exam_center_test_template.id": m.templateId,
+    }));
+
+    // 3. Unikal qilish
+    const uniqueConditions = [];
+    const seen = new Set();
+    for (const cond of templateConditions) {
+      const key = `${cond.templateLang}-${cond["template.exam_center_test_template.id"]}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueConditions.push(cond);
+      }
+    }
+
+    // 4. Barcha kerakli template’larni bitta query bilan olish
+    const templates = await templatesModel
+      .find({ $or: uniqueConditions })
+      .select("templateLang template")
+      .lean();
+
+    // 5. Tez topish uchun map qilish
+    const templateMap = new Map();
+    for (const tpl of templates) {
+      const tplId = tpl.template.exam_center_test_template.id;
+      templateMap.set(`${tpl.templateLang}-${tplId}`, tpl);
+    }
+
+    // 6. Mistake details yig'ish
     const mistakeDetails = [];
 
     for (const mistake of mistakes) {
-      const template = await templatesModel.findOne({
+      const key = `${mistake.templateLang}-${mistake.templateId}`;
+      const template = templateMap.get(key);
+      if (!template) continue;
+
+      const question = template.template.questions.find(
+        (q) => q.id === mistake.answerId
+      );
+
+      if (!question) continue;
+
+      const correctAnswer = question.answers.find((ans) => ans.check === 1);
+      const userAnswer = question.answers.find(
+        (ans) => ans.id === mistake.selectVariant
+      );
+
+      mistakeDetails.push({
+        id: mistake._id,
+        templateId: mistake.templateId,
         templateLang: mistake.templateLang,
-        "template.exam_center_test_template.id": mistake.templateId,
-      });
-
-      if (template) {
-        const question = template.template.questions.find(
-          (q) => q.id === mistake.answerId
-        );
-
-        if (question) {
-          const correctAnswer = question.answers.find((ans) => ans.check === 1);
-          const userAnswer = question.answers.find(
-            (ans) => ans.id === mistake.selectVariant
-          );
-
-          mistakeDetails.push({
-            id: mistake._id,
-            templateId: mistake.templateId,
-            templateLang: mistake.templateLang,
-            templateTitle:
-              template.template.title || `Shablon ${mistake.templateId}`,
-            question: question,
-            userAnswer: {
+        templateTitle:
+          template.template.title || `Shablon ${mistake.templateId}`,
+        question: question,
+        userAnswer: userAnswer
+          ? {
               id: userAnswer.id,
               text: userAnswer.body.map((b) => b.value).join(" "),
-            },
-            correctAnswer: {
+            }
+          : null,
+        correctAnswer: correctAnswer
+          ? {
               id: correctAnswer.id,
               text: correctAnswer.body.map((b) => b.value).join(" "),
-            },
-            date: mistake.createdAt,
-          });
-        }
-      }
+            }
+          : null,
+        date: mistake.createdAt,
+      });
     }
 
     res.status(200).json({ status: "success", data: mistakeDetails });
