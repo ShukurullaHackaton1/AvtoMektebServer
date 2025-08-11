@@ -72,6 +72,37 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // Admin username bilan kirish imkoniyati
+    if (phone.length < 9) {
+      // Bu username bo'lishi mumkin, admin modeldan tekshirish
+      const Admin = (await import("../models/admin.model.js")).default;
+      const admin = await Admin.findOne({ username: phone }).select(
+        "+password +salt"
+      );
+
+      if (admin && admin.validatePassword(password) && admin.isActive) {
+        const token = jwt.sign(
+          { adminId: admin._id, username: admin.username, role: admin.role },
+          process.env.JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+
+        await admin.updateLastLogin();
+
+        return res.status(200).json({
+          status: "success",
+          data: {
+            id: admin._id,
+            username: admin.username,
+            email: admin.email,
+            role: admin.role,
+          },
+          token: token,
+        });
+      }
+    }
+
+    // Normal phone validation
     if (phone.length !== 9) {
       return res.status(400).json({
         status: "error",
@@ -79,6 +110,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // Normal user login
     const findUser = await userModel.findOne({ phone });
     if (!findUser) {
       return res.status(400).json({
@@ -107,6 +139,8 @@ router.post("/login", async (req, res) => {
         totalTests: findUser.totalTests,
         totalCorrect: findUser.totalCorrect,
         totalWrong: findUser.totalWrong,
+        plan: findUser.plan,
+        planExpiryDate: findUser.planExpiryDate,
       },
       token: getToken,
     });

@@ -650,4 +650,25 @@ router.get("/analytics/revenue", adminAuth, async (req, res) => {
   }
 });
 
+router.get("/profile", adminAuth, async (req, res) => {
+  try {
+    const admin = req.admin;
+
+    res.json({
+      success: true,
+      data: {
+        id: admin._id,
+        username: admin.username,
+        email: admin.email,
+        role: admin.role,
+        permissions: admin.permissions,
+        lastLogin: admin.lastLogin,
+      },
+    });
+  } catch (error) {
+    console.error("Admin profile error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;
