@@ -1,6 +1,6 @@
 import express from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
-import { checkProPlan } from "../middlewares/planMiddleware.js";
+import { checkProPlanOptional } from "../middlewares/planMiddleware.js";
 import templatesModel from "../models/templates.model.js";
 import userModel from "../models/user.model.js";
 
@@ -9,8 +9,8 @@ const router = express.Router();
 // Exam sessiyalarini saqlash uchun (memory da)
 const examSessions = new Map();
 
-// Exam yaratish (20 yoki 50 ta test)
-router.post("/create-exam", authMiddleware, checkProPlan, async (req, res) => {
+// Exam yaratish (20 yoki 50 ta test) - FREE plan ham kira oladi
+router.post("/create-exam", authMiddleware, checkProPlanOptional, async (req, res) => {
   try {
     const { language, questionCount } = req.body;
     const { userId } = req.userData;
@@ -120,7 +120,6 @@ router.post("/create-exam", authMiddleware, checkProPlan, async (req, res) => {
 router.get(
   "/question/:examId/:questionIndex",
   authMiddleware,
-  checkProPlan,
   async (req, res) => {
     try {
       const { examId, questionIndex } = req.params;
@@ -185,7 +184,6 @@ router.get(
 router.post(
   "/answer/:examId",
   authMiddleware,
-  checkProPlan,
   async (req, res) => {
     try {
       const { examId } = req.params;
@@ -263,7 +261,6 @@ router.post(
 router.post(
   "/complete/:examId",
   authMiddleware,
-  checkProPlan,
   async (req, res) => {
     try {
       const { examId } = req.params;
@@ -302,14 +299,14 @@ router.post(
           ? Math.round((correctAnswers / totalQuestions) * 100)
           : 0;
 
-      // User statistikasini yangilash
-      await userModel.findByIdAndUpdate(userId, {
-        $inc: {
-          totalTests: totalQuestions,
-          totalCorrect: correctAnswers,
-          totalWrong: wrongAnswers,
-        },
-      });
+      // User statistikasini yangilash - LIFETIME limit ni kamaytiramiz
+      const user = await userModel.findById(userId);
+      if (user) {
+        user.incrementTestCount();
+        user.totalCorrect += correctAnswers;
+        user.totalWrong += wrongAnswers;
+        await user.save();
+      }
 
       // Session ni 1 soatdan keyin o'chirish
       setTimeout(() => {
@@ -346,7 +343,6 @@ router.post(
 router.get(
   "/status/:examId",
   authMiddleware,
-  checkProPlan,
   async (req, res) => {
     try {
       const { examId } = req.params;

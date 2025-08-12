@@ -36,13 +36,9 @@ const userSchema = new mongoose.Schema(
       enum: ["free", "pro"],
       default: "free",
     },
-    dailyTestsUsed: {
+    lifetimeTestsUsed: {
       type: Number,
       default: 0,
-    },
-    lastTestDate: {
-      type: Date,
-      default: null,
     },
     planExpiryDate: {
       type: Date,
@@ -70,51 +66,29 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Kunlik testlar sonini reset qilish metodi
-userSchema.methods.resetDailyTests = function () {
-  const today = new Date();
-  const lastTestDate = this.lastTestDate;
-
-  if (
-    !lastTestDate ||
-    lastTestDate.getDate() !== today.getDate() ||
-    lastTestDate.getMonth() !== today.getMonth() ||
-    lastTestDate.getFullYear() !== today.getFullYear()
-  ) {
-    this.dailyTestsUsed = 0;
-    this.lastTestDate = today;
-  }
-};
-
-// Test limit tekshirish metodi
+// Test limit tekshirish metodi - lifetime uchun
 userSchema.methods.canTakeTest = function () {
-  this.resetDailyTests();
-
   if (this.plan === "pro") {
     // Pro plan uchun unlimited
     return { canTake: true, remaining: "unlimited" };
   } else {
-    // Free plan uchun 20 ta kuniga
-    const dailyLimit = 20;
-    const remaining = dailyLimit - this.dailyTestsUsed;
+    // Free plan uchun lifetime 20 ta
+    const lifetimeLimit = 20;
+    const remaining = lifetimeLimit - this.lifetimeTestsUsed;
     return {
       canTake: remaining > 0,
       remaining: remaining,
-      limit: dailyLimit,
+      limit: lifetimeLimit,
     };
   }
 };
 
-// Test count increment metodi
+// Test count increment metodi - lifetime uchun
 userSchema.methods.incrementTestCount = function () {
-  this.resetDailyTests();
-
   if (this.plan === "free") {
-    this.dailyTestsUsed += 1;
+    this.lifetimeTestsUsed += 1;
   }
-
   this.totalTests += 1;
-  this.lastTestDate = new Date();
 };
 
 export default mongoose.model("user", userSchema);

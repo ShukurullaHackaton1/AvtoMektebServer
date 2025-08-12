@@ -10,7 +10,7 @@ import {
 
 const router = express.Router();
 
-// Barcha template lar ro'yxatini olish
+// Barcha template lar ro'yxatini olish - AUTH TALAB QILMASLIK
 router.get("/lists/:lang", async (req, res) => {
   try {
     const { lang } = req.params;
@@ -94,7 +94,7 @@ router.get(
         data: findTemplate,
         userPlan: {
           plan: user.plan,
-          dailyUsed: user.dailyTestsUsed,
+          lifetimeUsed: user.lifetimeTestsUsed,
           remaining: limitInfo.remaining,
           limit: limitInfo.limit || "unlimited",
         },
@@ -106,7 +106,7 @@ router.get(
   }
 );
 
-// Javobni tekshirish - FREE PLAN UCHUN 3 XATO CHEGARASI OLIB TASHLANDI
+// Javobni tekshirish
 router.post("/check-answer", authMiddleware, async (req, res) => {
   try {
     const { templateLang, templateId, questionId, selectedAnswer } = req.body;
@@ -183,7 +183,7 @@ router.get("/user-plan", authMiddleware, async (req, res) => {
     const { userId } = req.userData;
     const user = await userModel
       .findById(userId)
-      .select("plan dailyTestsUsed lastTestDate planExpiryDate");
+      .select("plan lifetimeTestsUsed planExpiryDate");
 
     if (!user) {
       return res
@@ -197,7 +197,7 @@ router.get("/user-plan", authMiddleware, async (req, res) => {
       status: "success",
       data: {
         plan: user.plan,
-        dailyUsed: user.dailyTestsUsed,
+        lifetimeUsed: user.lifetimeTestsUsed,
         remaining: limitInfo.remaining,
         limit: limitInfo.limit || "unlimited",
         canTakeTest: limitInfo.canTake,

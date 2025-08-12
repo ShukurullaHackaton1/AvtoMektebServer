@@ -4,8 +4,9 @@ import mongoose from "mongoose";
 import cors from "cors";
 import userRoutes from "./routes/user.routes.js";
 import templateRoutes from "./routes/template.routes.js";
-import paymentRoutes from "./routes/payment.routes.js"; // Yangi payment routes
-import adminRoutes from "./routes/admin.routes.js"; // Yangi admin routes
+import examRoutes from "./routes/exam.routes.js"; // Exam routes qo'shildi
+import paymentRoutes from "./routes/payment.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -31,8 +32,9 @@ app.get("/", (req, res) => {
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/templates", templateRoutes);
-app.use("/api/payments", paymentRoutes); // Payment routes
-app.use("/api/admin", adminRoutes); // Admin routes
+app.use("/api/exam", examRoutes); // Exam routes qo'shildi
+app.use("/api/payments", paymentRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Static files
 app.use(

@@ -19,10 +19,10 @@ export const checkTestLimit = async (req, res, next) => {
     if (!limitCheck.canTake) {
       return res.status(403).json({
         status: "error",
-        message: "Kunlik test limiti tugadi",
+        message: "Lifetime test limiti tugadi",
         data: {
           plan: user.plan,
-          dailyUsed: user.dailyTestsUsed,
+          lifetimeUsed: user.lifetimeTestsUsed,
           limit: limitCheck.limit,
           remaining: limitCheck.remaining,
         },
@@ -38,8 +38,8 @@ export const checkTestLimit = async (req, res, next) => {
   }
 };
 
-// Pro plan tekshirish
-export const checkProPlan = async (req, res, next) => {
+// Pro plan tekshirish - FREE planlar ham exam ga kira olishi uchun o'zgartirish
+export const checkProPlanOptional = async (req, res, next) => {
   try {
     const { userId } = req.userData;
 
@@ -51,13 +51,18 @@ export const checkProPlan = async (req, res, next) => {
       });
     }
 
-    if (user.plan !== "pro") {
+    // Free plan ham kira oladi, lekin limit tekshiriladi
+    const limitCheck = user.canTakeTest();
+    
+    if (!limitCheck.canTake) {
       return res.status(403).json({
         status: "error",
-        message: "Bu funksiya faqat PRO foydalanuvchilar uchun",
+        message: "Test limiti tugadi. PRO planga o'ting",
         data: {
           currentPlan: user.plan,
-          requiredPlan: "pro",
+          lifetimeUsed: user.lifetimeTestsUsed,
+          limit: limitCheck.limit,
+          remaining: limitCheck.remaining,
         },
       });
     }
@@ -65,7 +70,7 @@ export const checkProPlan = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error("Pro plan check error:", error);
+    console.error("Plan check error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 };
