@@ -11,7 +11,10 @@ kiril.json
 /edu_type_img
 /files/content/images
 /files
-
+/export
+/images
+export.zip
+kaa_kiril.json
 kiril-test-images.zip
 ru-test-images.zip
 /routes/edu-types.routes.js

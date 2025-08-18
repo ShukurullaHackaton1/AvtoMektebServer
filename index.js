@@ -9,6 +9,9 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import uploadJsonToMongo from "./import.js";
+import templatesModel from "./models/templates.model.js";
+import axios from "axios";
 
 // ES modules uchun __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -55,7 +58,7 @@ if (!process.env.VERCEL) {
   // Local development da
   mongoose
     .connect(mongo_uri)
-    .then(() => {
+    .then(async () => {
       console.log("✅ Database ulandi");
     })
     .catch((error) => {

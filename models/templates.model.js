@@ -8,7 +8,7 @@ const templateSchema = new mongoose.Schema(
     },
     templateLang: {
       type: String,
-      enum: ["ru", "uz", "kiril"],
+      enum: ["ru", "uz", "kiril", "kaa"],
     },
   },
   {
