@@ -8,7 +8,6 @@ const historySchema = new mongoose.Schema(
     },
     templateLang: {
       type: String,
-      enum: ["uz", "ru", "kiril", "kaa"],
     },
     templateId: {
       type: Number,

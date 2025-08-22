@@ -40,18 +40,51 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/admin", adminRoutes);
 
 // Static files
-app.use(
-  "/uz-test-images",
-  express.static(path.join(__dirname, "uz-test-images"))
-);
-app.use(
-  "/ru-test-images",
-  express.static(path.join(__dirname, "ru-test-images"))
-);
-app.use(
-  "/kiril-test-images",
-  express.static(path.join(__dirname, "kiril-test-images"))
-);
+app.get("/uz-test-images/:image", (req, res) => {
+  const allowedOrigin = "https://avto-mekteb-client.vercel.app";
+  const referer = req.get("referer");
+
+  if (!referer || !referer.startsWith(allowedOrigin)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  const filePath = path.join(__dirname, "uz-test-images", req.params.image);
+  res.sendFile(filePath);
+});
+app.get("/kiril-test-images", (req, res) => {
+  const allowedOrigin = "https://avto-mekteb-client.vercel.app";
+  const referer = req.get("referer");
+
+  if (!referer || !referer.startsWith(allowedOrigin)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  const filePath = path.join(__dirname, "kiril-test-images", req.params.image);
+  res.sendFile(filePath);
+});
+app.get("/ru-test-images/:image", (req, res) => {
+  const allowedOrigin = "https://avto-mekteb-client.vercel.app";
+  const referer = req.get("referer");
+
+  if (!referer || !referer.startsWith(allowedOrigin)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  const filePath = path.join(__dirname, "ru-test-images", req.params.image);
+  res.sendFile(filePath);
+});
+// app.use(
+//   "/uz-test-images",
+//   express.static(path.join(__dirname, "uz-test-images"))
+// );
+// app.use(
+//   "/ru-test-images",
+//   express.static(path.join(__dirname, "ru-test-images"))
+// );
+// app.use(
+//   "/kiril-test-images",
+//   express.static(path.join(__dirname, "kiril-test-images"))
+// );
 
 // MongoDB ga ulanish
 if (!process.env.VERCEL) {
@@ -60,12 +93,13 @@ if (!process.env.VERCEL) {
     .connect(mongo_uri)
     .then(async () => {
       console.log("✅ Database ulandi");
+
+      // uploadJsonToMongo();
     })
     .catch((error) => {
       console.error("❌ Database ulanishida xatolik:", error);
     });
 } else {
-  // Vercel da
   mongoose.connect(mongo_uri).catch((error) => {
     console.error("❌ Database ulanishida xatolik:", error);
   });

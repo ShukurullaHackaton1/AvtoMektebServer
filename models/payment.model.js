@@ -10,7 +10,7 @@ const paymentSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
-      default: 19999, // 35,000 so'm
+      default: 1000, // 1000 so'm
     },
     plan: {
       type: String,

@@ -63,12 +63,10 @@ router.get(
       const { lang, templateId } = req.params;
 
       if (!["uz", "ru", "kiril", "uz_kiril", "kaa"].includes(lang)) {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "Bunday turdagi malumot topilmadi",
-          });
+        return res.status(400).json({
+          status: "error",
+          message: "Bunday turdagi malumot topilmadi",
+        });
       }
 
       // uz_kiril ni kiril ga o'zgartiramiz
@@ -89,9 +87,21 @@ router.get(
       const user = req.user;
       const limitInfo = user.canTakeTest();
 
+      // answers ichidagi check maydonini olib tashlash
+      const filteredTemplate = {
+        ...findTemplate._doc,
+        template: {
+          ...findTemplate._doc.template,
+          questions: findTemplate._doc.template.questions.map((question) => ({
+            ...question,
+            answers: question.answers.map(({ check, ...rest }) => rest),
+          })),
+        },
+      };
+
       res.status(200).json({
         status: "success",
-        data: findTemplate,
+        data: filteredTemplate,
         userPlan: {
           plan: user.plan,
           lifetimeUsed: user.lifetimeTestsUsed,

@@ -7,9 +7,9 @@ import md5 from "md5";
 const router = express.Router();
 
 // Click sozlamalari - .env dan olinadi
-const CLICK_SERVICE_ID = process.env.CLICK_SERVICE_ID;
-const CLICK_MERCHANT_ID = process.env.CLICK_MERCHANT_ID;
-const CLICK_SECRET_KEY = process.env.CLICK_SECRET_KEY;
+const CLICK_SERVICE_ID = "80565";
+const CLICK_MERCHANT_ID = "44802";
+const CLICK_SECRET_KEY = "9qwgzBYIIWYX5gs";
 
 // PRO plan uchun to'lov havolasini yaratish
 router.post("/create-payment", authMiddleware, async (req, res) => {
@@ -45,13 +45,13 @@ router.post("/create-payment", authMiddleware, async (req, res) => {
 
     if (existingPayment) {
       // Mavjud to'lov havolasini qaytarish
-      const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=19999&transaction_param=${existingPayment._id}`;
+      const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=1000&transaction_param=${existingPayment._id}`;
 
       return res.status(200).json({
         status: "success",
         data: {
           paymentId: existingPayment._id,
-          amount: 19999,
+          amount: 1000,
           clickUrl: clickUrl,
           qrCode: clickUrl,
           description: "PRO Plan - Unlimited tests",
@@ -62,20 +62,20 @@ router.post("/create-payment", authMiddleware, async (req, res) => {
     // Yangi to'lov yozuvini yaratish
     const newPayment = await paymentModel.create({
       userId,
-      amount: 19999, // 35,000 so'm
+      amount: 1000, // 1000 so'm
       plan: "pro",
       status: "pending",
       description: "PRO Plan - Unlimited tests",
     });
 
     // Click to'lov havolasini yaratish
-    const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=19999&transaction_param=${newPayment._id}`;
+    const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=1000&transaction_param=${newPayment._id}`;
 
     res.status(200).json({
       status: "success",
       data: {
         paymentId: newPayment._id,
-        amount: 19999,
+        amount: 1000,
         clickUrl: clickUrl,
         qrCode: clickUrl,
         description: "PRO Plan - Unlimited tests",
