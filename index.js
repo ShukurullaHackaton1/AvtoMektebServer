@@ -9,10 +9,9 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import path from "path";
 import { fileURLToPath } from "url";
-// import uploadJsonToMongo from "./import.js";
+import uploadJsonToMongo from "./import.js";
 import templatesModel from "./models/templates.model.js";
 import axios from "axios";
-import "./seeds/createPlan.js";
 
 // ES modules uchun __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -25,8 +24,25 @@ const port = process.env.PORT || 5000;
 const mongo_uri = process.env.MONGO_URI;
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  "https://avto-mekteb-client.vercel.app",
+  "http://localhost:5173", // agar dev uchun kerak bo'lsa
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
 app.get("/", (req, res) => {
