@@ -90,6 +90,17 @@ app.get("/ru-test-images/:image", (req, res) => {
   const filePath = path.join(__dirname, "ru-test-images", req.params.image);
   res.sendFile(filePath);
 });
+app.get("/images/:image", (req, res) => {
+  const allowedOrigin = "https://avto-mekteb-client.vercel.app";
+  const referer = req.get("referer");
+
+  if (!referer || !referer.startsWith(allowedOrigin)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  const filePath = path.join(__dirname, "images", req.params.image);
+  res.sendFile(filePath);
+});
 // app.use(
 //   "/uz-test-images",
 //   express.static(path.join(__dirname, "uz-test-images"))

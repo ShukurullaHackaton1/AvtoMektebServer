@@ -3,8 +3,10 @@ import express from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
 import paymentModel from "../models/payment.model.js";
 import userModel from "../models/user.model.js";
+import Plan from "../models/plan.model.js";
 import md5 from "md5";
 import { config } from "dotenv";
+
 const router = express.Router();
 config();
 // Click sozlamalari
@@ -471,6 +473,76 @@ router.get("/payment-status/:paymentId", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Payment status error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+router.get("/current-pricing", async (req, res) => {
+  try {
+    const plan = await Plan.findOne({ name: "pro", isActive: true });
+
+    if (!plan) {
+      // Default qiymatlar
+      return res.json({
+        status: "success",
+        data: {
+          price: 19999,
+          originalPrice: 40000,
+          duration: 30,
+          displayName: "PRO Plan",
+          discountPercentage: 50,
+          features: {
+            unlimited: true,
+            examMode: true,
+            premiumSupport: true,
+            detailedAnalysis: true,
+          },
+        },
+      });
+    }
+
+    // Chegirma foizini hisoblash
+    let discountPercentage = 0;
+    if (plan.originalPrice && plan.originalPrice > plan.price) {
+      discountPercentage = Math.round(
+        ((plan.originalPrice - plan.price) / plan.originalPrice) * 100
+      );
+    }
+
+    res.json({
+      status: "success",
+      data: {
+        price: plan.price,
+        originalPrice: plan.originalPrice,
+        duration: plan.duration,
+        displayName: plan.displayName,
+        discountPercentage,
+        discountEndDate: plan.discountEndDate,
+        features: plan.features,
+      },
+    });
+  } catch (error) {
+    console.error("Get current pricing error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// Payment history endpoint
+router.get("/payment-history", authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.userData;
+
+    const payments = await paymentModel
+      .find({ userId, status: "paid" })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select("amount description status createdAt planDuration");
+
+    res.json({
+      status: "success",
+      data: payments,
+    });
+  } catch (error) {
+    console.error("Payment history error:", error);
     res.status(500).json({ status: "error", message: error.message });
   }
 });
