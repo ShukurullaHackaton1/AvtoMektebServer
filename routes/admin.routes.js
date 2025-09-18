@@ -650,6 +650,7 @@ router.get("/analytics/revenue", adminAuth, async (req, res) => {
   }
 });
 
+// Admin profile
 router.get("/profile", adminAuth, async (req, res) => {
   try {
     const admin = req.admin;
@@ -667,6 +668,91 @@ router.get("/profile", adminAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("Admin profile error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PRO plan narxlarini olish
+router.get("/plan/pricing", adminAuth, async (req, res) => {
+  try {
+    const Plan = (await import("../models/plan.model.js")).default;
+    const plan = await Plan.getActivePlan();
+
+    res.json({
+      success: true,
+      data: plan,
+    });
+  } catch (error) {
+    console.error("Get plan pricing error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PRO plan narxlarini yangilash (faqat super_admin)
+router.put("/plan/pricing", adminAuth, async (req, res) => {
+  try {
+    // Faqat super_admin ruxsati
+    if (req.admin.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Faqat super admin bu amalni bajara oladi",
+      });
+    }
+
+    const { price, originalPrice, duration, discountEndDate } = req.body;
+
+    // Validation
+    if (!price || price < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Narx 0 dan katta bo'lishi kerak",
+      });
+    }
+
+    if (!duration || duration < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Muddat kamida 1 kun bo'lishi kerak",
+      });
+    }
+
+    const Plan = (await import("../models/plan.model.js")).default;
+    const updatedPlan = await Plan.updatePricing(
+      {
+        price,
+        originalPrice,
+        duration,
+        discountEndDate,
+      },
+      req.admin._id
+    );
+
+    res.json({
+      success: true,
+      message: "Plan narxlari muvaffaqiyatli yangilandi",
+      data: updatedPlan,
+    });
+  } catch (error) {
+    console.error("Update plan pricing error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Plan tarixi (o'zgarishlar)
+router.get("/plan/history", adminAuth, async (req, res) => {
+  try {
+    const Plan = (await import("../models/plan.model.js")).default;
+    const history = await Plan.find({ name: "pro" })
+      .populate("updatedBy", "username email")
+      .sort({ updatedAt: -1 })
+      .limit(50);
+
+    res.json({
+      success: true,
+      data: history,
+    });
+  } catch (error) {
+    console.error("Get plan history error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

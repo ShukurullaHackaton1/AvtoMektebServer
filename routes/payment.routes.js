@@ -7,9 +7,9 @@ import md5 from "md5";
 const router = express.Router();
 
 // Click sozlamalari - .env dan olinadi
-const CLICK_SERVICE_ID = "80565";
-const CLICK_MERCHANT_ID = "44802";
-const CLICK_SECRET_KEY = "9qwgzBYIIWYX5gs";
+const CLICK_SERVICE_ID = process.env.CLICK_SERVICE_ID || "80565";
+const CLICK_MERCHANT_ID = process.env.CLICK_MERCHANT_ID || "44802";
+const CLICK_SECRET_KEY = process.env.CLICK_SECRET_KEY || "9qwgzBYIIWYX5gs";
 
 // PRO plan uchun to'lov havolasini yaratish
 router.post("/create-payment", authMiddleware, async (req, res) => {
@@ -22,6 +22,20 @@ router.post("/create-payment", authMiddleware, async (req, res) => {
       return res.status(404).json({
         status: "error",
         message: "Foydalanuvchi topilmadi",
+      });
+    }
+
+    // Dinamik plan narxini olish
+    const Plan = (await import("../models/plan.model.js")).default;
+    let activePlan;
+
+    try {
+      activePlan = await Plan.getActivePlan();
+    } catch (error) {
+      console.error("Plan fetch error:", error);
+      return res.status(400).json({
+        status: "error",
+        message: "Faol PRO plan topilmadi. Admin bilan bog'laning.",
       });
     }
 
@@ -44,41 +58,34 @@ router.post("/create-payment", authMiddleware, async (req, res) => {
     });
 
     if (existingPayment) {
-      // Mavjud to'lov havolasini qaytarish
-      const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=1000&transaction_param=${existingPayment._id}`;
-
-      return res.status(200).json({
-        status: "success",
-        data: {
-          paymentId: existingPayment._id,
-          amount: 1000,
-          clickUrl: clickUrl,
-          qrCode: clickUrl,
-          description: "PRO Plan - Unlimited tests",
-        },
-      });
+      // Mavjud to'lov havolasini qaytarish (narx o'zgargan bo'lishi mumkin, yangi yaratamiz)
+      await paymentModel.findByIdAndDelete(existingPayment._id);
     }
 
-    // Yangi to'lov yozuvini yaratish
+    // Yangi to'lov yozuvini yaratish (dinamik narx bilan)
     const newPayment = await paymentModel.create({
       userId,
-      amount: 1000, // 1000 so'm
+      amount: activePlan.price, // Dinamik narx
       plan: "pro",
+      planDuration: activePlan.duration, // Plan muddati
       status: "pending",
-      description: "PRO Plan - Unlimited tests",
+      description: `${activePlan.displayName} - ${activePlan.duration} kun`,
     });
 
-    // Click to'lov havolasini yaratish
-    const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=1000&transaction_param=${newPayment._id}`;
+    // Click to'lov havolasini yaratish (dinamik narx bilan)
+    const clickUrl = `https://my.click.uz/services/pay?service_id=${CLICK_SERVICE_ID}&merchant_id=${CLICK_MERCHANT_ID}&amount=${activePlan.price}&transaction_param=${newPayment._id}`;
 
     res.status(200).json({
       status: "success",
       data: {
         paymentId: newPayment._id,
-        amount: 1000,
+        amount: activePlan.price,
+        originalPrice: activePlan.originalPrice,
+        duration: activePlan.duration,
         clickUrl: clickUrl,
         qrCode: clickUrl,
-        description: "PRO Plan - Unlimited tests",
+        description: `${activePlan.displayName} - ${activePlan.duration} kun`,
+        discountPercentage: activePlan.discountPercentage,
       },
     });
   } catch (error) {
@@ -132,7 +139,7 @@ router.get("/payment-history", authMiddleware, async (req, res) => {
       .find({ userId })
       .sort({ createdAt: -1 })
       .select(
-        "amount plan status createdAt planStartDate planEndDate description"
+        "amount plan status createdAt planStartDate planEndDate description planDuration"
       );
 
     res.status(200).json({
@@ -142,6 +149,40 @@ router.get("/payment-history", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Payment history error:", error);
     res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// PRO plan narxlarini olish (public endpoint)
+router.get("/current-pricing", async (req, res) => {
+  try {
+    const Plan = (await import("../models/plan.model.js")).default;
+    const activePlan = await Plan.getActivePlan();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        price: activePlan.price,
+        originalPrice: activePlan.originalPrice,
+        duration: activePlan.duration,
+        displayName: activePlan.displayName,
+        discountPercentage: activePlan.discountPercentage,
+        discountEndDate: activePlan.discountEndDate,
+        features: activePlan.features,
+      },
+    });
+  } catch (error) {
+    console.error("Get pricing error:", error);
+    // Default qiymatlarni qaytarish
+    res.status(200).json({
+      status: "success",
+      data: {
+        price: 19999,
+        originalPrice: 40000,
+        duration: 30,
+        displayName: "PRO Plan",
+        discountPercentage: 50,
+      },
+    });
   }
 });
 
@@ -334,7 +375,7 @@ router.post("/complete", async (req, res) => {
 
     const currentDate = new Date();
     const expiryDate = new Date();
-    expiryDate.setMonth(currentDate.getMonth() + 1); // 1 oy
+    expiryDate.setDate(currentDate.getDate() + payment.planDuration); // Dinamik muddat
 
     // Payment holatini yangilash
     await paymentModel.findByIdAndUpdate(merchant_trans_id, {
@@ -360,6 +401,7 @@ router.post("/complete", async (req, res) => {
     });
 
     console.log(`✅ User ${payment.userId} PRO planga o'tkazildi`);
+    console.log(`   Muddat: ${payment.planDuration} kun`);
 
     const time = new Date().getTime();
     console.log(
